@@ -1,5 +1,7 @@
 https://www.postgresqltutorial.com/postgresql-tutorial/postgresql-alias/
 
+Queries are Written :
+
 select film_id from film;
 
 select * from customer;
