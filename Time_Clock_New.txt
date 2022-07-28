@@ -1,0 +1,98 @@
+Queries are created ::$$$$
+
+create table employee (
+  id serial primary key,
+  username varchar
+);
+
+create table time_punch (
+  id serial primary key,
+  employee_id int not null references employee(id),
+  is_out_punch boolean not null default false,
+  punch_time timestamp not null default now()
+);
+
+insert into employee (username) values ('Bear');
+insert into time_punch (employee_id, is_out_punch, punch_time)
+values
+(1, false, '2020-01-01 10:00:00'),
+(1, true, '2020-01-01 11:30:00');
+
+insert into employee (username) values ('Lion');
+insert into time_punch (employee_id, is_out_punch, punch_time)
+values
+(2, false, '2020-10-05 05:05:00'),
+(2, true, '2020-10-05 11:30:00');
+
+truncate table time_punch;
+
+select * from employee;
+select * from time_punch;
+
+select tp1.punch_time - tp2.punch_time as time_worked
+from time_punch tp1
+join time_punch tp2
+on tp2.id = (
+	select tps.id
+	from time_punch tps
+	where tps.id < tp1.id
+	and tps.employee_id = tp1.employee_id
+	and not tps.is_out_punch
+	order by tps.id desc limit 1
+)
+where tp1.employee_id = 2
+and tp1.is_out_punch
+
+create or replace function fn_check_time_punch() returns trigger as $psql$
+  begin
+    if new.is_out_punch = (
+      select tps.is_out_punch
+      from time_punch tps
+      where tps.employee_id = new.employee_id
+      order by tps.id desc limit 1
+    ) then
+      return null;
+    end if;
+    return new;
+  end;
+$psql$ language plpgsql;
+
+create trigger check_time_punch before insert on time_punch for each row execute procedure fn_check_time_punch();
+
+insert into time_punch (employee_id, is_out_punch, punch_time)
+values
+(1, true, '2020-01-01 13:00:00');
+
+create table time_punch_audit (
+  id serial primary key,
+  change_time timestamp not null default now(),
+  change_employee_id int not null references employee(id),
+  time_punch_id int not null references time_punch(id),
+  punch_time timestamp not null
+);
+
+alter table time_punch add column change_employee_id int null references employee(id);
+
+create or replace function fn_change_time_punch_audit() returns trigger as $psql$
+  begin
+    insert into time_punch_audit (change_time, change_employee_id, time_punch_id, punch_time)
+    values
+    	(now(), new.change_employee_id, new.id, old.punch_time);
+    return new;
+  end;
+$psql$ language plpgsql;
+
+create trigger change_time_punch_audit after update on time_punch
+for each row execute procedure fn_change_time_punch_audit();
+
+select punch_time
+from time_punch
+where id=6;
+
+update time_punch set punch_time = punch_time + interval '5 minute', change_employee_id = 2 where id = 6;
+
+select * from time_punch;
+
+select * from time_punch_audit;
+
+
